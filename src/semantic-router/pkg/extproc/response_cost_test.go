@@ -18,6 +18,7 @@ package extproc
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/vllm-project/semantic-router/src/semantic-router/pkg/config"
@@ -194,6 +195,62 @@ func TestApplyResponseCost_NilCostIsNoop(t *testing.T) {
 	common := commonResponseFor(response)
 	if common.HeaderMutation != nil || common.BodyMutation != nil {
 		t.Error("nil cost must not touch the response")
+	}
+}
+
+func TestInjectCostIntoStreamingChunk(t *testing.T) {
+	cost := &responseCost{Total: 0.044, Currency: "USD", PerModel: []modelCostEntry{{Model: "premium", Cost: 0.044}}}
+
+	t.Run("rewrites only the usage chunk, keeps framing", func(t *testing.T) {
+		chunk := "data: {\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\n\n" +
+			"data: {\"choices\":[],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":5,\"total_tokens\":15}}\n\n" +
+			"data: [DONE]\n\n"
+		out, ok := injectCostIntoStreamingChunk(chunk, cost)
+		if !ok {
+			t.Fatal("expected injection")
+		}
+		// The content delta and [DONE] lines must be untouched.
+		if !strings.Contains(out, "data: {\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\n\n") {
+			t.Error("content delta line altered")
+		}
+		if !strings.HasSuffix(out, "data: [DONE]\n\n") {
+			t.Error("[DONE] framing altered")
+		}
+		// The usage line now carries cost.
+		if !strings.Contains(out, "\"cost\":0.044") {
+			t.Errorf("usage chunk missing cost: %s", out)
+		}
+	})
+
+	t.Run("no usage chunk is a no-op", func(t *testing.T) {
+		chunk := "data: {\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\n\ndata: [DONE]\n\n"
+		out, ok := injectCostIntoStreamingChunk(chunk, cost)
+		if ok || out != chunk {
+			t.Error("expected no-op when no usage present")
+		}
+	})
+}
+
+func TestInjectStreamingCost_SingleModel(t *testing.T) {
+	r := costTestRouter()
+	ctx := &RequestContext{RequestModel: "premium", StreamingMetadata: map[string]interface{}{
+		"usage": map[string]interface{}{
+			"prompt_tokens":     float64(1000),
+			"completion_tokens": float64(1000),
+			"total_tokens":      float64(2000),
+		},
+	}}
+	chunk := "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":1000,\"completion_tokens\":1000,\"total_tokens\":2000}}\n\n"
+	out, ok := r.injectStreamingCost(chunk, ctx)
+	if !ok {
+		t.Fatal("expected cost injected into streaming usage chunk")
+	}
+	// premium: (1000*10 + 1000*30)/1e6 = 0.04
+	if !strings.Contains(out, "\"cost\":0.04") {
+		t.Errorf("expected cost 0.04 in chunk: %s", out)
+	}
+	if ctx.ResponseCost == nil || ctx.ResponseCost.Total != 0.04 {
+		t.Errorf("ctx.ResponseCost = %+v, want total 0.04", ctx.ResponseCost)
 	}
 }
 

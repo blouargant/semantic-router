@@ -24,11 +24,48 @@ func (r *OpenAIRouter) handleStreamingResponseBody(
 	ctx.HasStreamingChunks = true
 	r.parseStreamingChunk(chunk, ctx)
 
+	// Cost can only reach a streaming client through the include_usage chunk;
+	// response headers are already flushed by the time usage is known.
+	mutatedChunk, costInjected := r.injectStreamingCost(chunk, ctx)
+
 	if strings.Contains(chunk, "data: [DONE]") {
 		r.finalizeStreamingResponse(ctx)
 	}
 
+	if costInjected {
+		return buildResponseBodyContinueResponse(&ext_proc.BodyMutation{
+			Mutation: &ext_proc.BodyMutation_Body{Body: []byte(mutatedChunk)},
+		}, nil)
+	}
 	return buildResponseBodyContinueResponse(nil, nil)
+}
+
+// injectStreamingCost adds the consolidated cost to the usage-bearing SSE chunk.
+// The main streaming path bills a single model (ctx.RequestModel); the tokens
+// come from the usage object this chunk just contributed. Returns the original
+// chunk unchanged when this chunk carries no usage or the model is unpriced.
+func (r *OpenAIRouter) injectStreamingCost(chunk string, ctx *RequestContext) (string, bool) {
+	if !strings.Contains(chunk, "\"usage\"") {
+		return chunk, false
+	}
+	usage := extractStreamingUsage(ctx)
+	if usage.PromptTokens == 0 && usage.CompletionTokens == 0 {
+		return chunk, false
+	}
+	cached, _ := streamingCachedPromptTokens(ctx, int(usage.PromptTokens))
+	cost := r.buildResponseCost([]costModelLeg{{
+		model: ctx.RequestModel,
+		usage: responseUsageMetrics{
+			promptTokens:       int(usage.PromptTokens),
+			cachedPromptTokens: cached,
+			completionTokens:   int(usage.CompletionTokens),
+		},
+	}})
+	if cost == nil {
+		return chunk, false
+	}
+	ctx.ResponseCost = cost
+	return injectCostIntoStreamingChunk(chunk, cost)
 }
 
 func recordStreamingTTFT(ctx *RequestContext) {

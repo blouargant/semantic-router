@@ -143,3 +143,36 @@ func injectCostIntoUsage(body []byte, cost *responseCost) ([]byte, bool) {
 	}
 	return out, true
 }
+
+// injectCostIntoStreamingChunk rewrites any SSE "data: {json}" line in the chunk
+// whose payload carries a top-level usage object, adding the cost block to it.
+// This is how cost reaches a streaming client: headers are already flushed by the
+// time usage is known, so the include_usage chunk is the only surface. Lines
+// without a usage object (content deltas, [DONE]) are left byte-for-byte intact,
+// preserving SSE framing. Returns changed=false when no usage line was found.
+func injectCostIntoStreamingChunk(chunk string, cost *responseCost) (string, bool) {
+	if cost == nil {
+		return chunk, false
+	}
+	lines := strings.Split(chunk, "\n")
+	changed := false
+	for i, line := range lines {
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+		payload := strings.TrimSpace(strings.TrimPrefix(line, "data: "))
+		if payload == "" || payload == "[DONE]" {
+			continue
+		}
+		injected, ok := injectCostIntoUsage([]byte(payload), cost)
+		if !ok {
+			continue
+		}
+		lines[i] = "data: " + string(injected)
+		changed = true
+	}
+	if !changed {
+		return chunk, false
+	}
+	return strings.Join(lines, "\n"), true
+}
