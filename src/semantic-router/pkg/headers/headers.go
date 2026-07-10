@@ -296,6 +296,24 @@ const (
 	ResponseWarningJailbreak         = "response_jailbreak"
 )
 
+// Response Cost Headers
+// The router consolidates the cost of every upstream model call made for a
+// request (one on the main path, several across a looper run) and returns it to
+// the client. The same numbers are mirrored inside the response body usage
+// object. Absent when no priced model was involved (no pricing configured).
+const (
+	// VSRResponseCost is the consolidated cost total, formatted as a decimal
+	// number in the currency named by VSRResponseCostCurrency.
+	VSRResponseCost = "x-vsr-response-cost"
+
+	// VSRResponseCostCurrency names the currency of VSRResponseCost (e.g. USD).
+	VSRResponseCostCurrency = "x-vsr-response-cost-currency"
+
+	// VSRResponseCostBreakdown carries the per-model split as a semicolon-separated
+	// list of model=cost pairs, in first-called order (e.g. "premium=0.0031;balanced=0.0011").
+	VSRResponseCostBreakdown = "x-vsr-response-cost-breakdown"
+)
+
 // Auth Backend Injected Headers
 // These headers are set by the external authorization service (Authorino, Envoy Gateway JWT,
 // oauth2-proxy, etc.) after successful user authentication.

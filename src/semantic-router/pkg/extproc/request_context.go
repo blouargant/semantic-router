@@ -189,6 +189,12 @@ type RequestContext struct {
 	EnhancedHallucinationInfo *EnhancedHallucinationInfo // Detailed NLI info (when use_nli enabled)
 	UnverifiedFactualResponse bool                       // True if fact-check needed but no tools to verify against
 
+	// ResponseCost is the consolidated cost of every upstream model call made for
+	// this request, priced per model. Populated during response usage recording
+	// (main path); the looper path prices its own per-model usage. nil when no
+	// priced model was involved. Returned to the client via headers + body.
+	ResponseCost *responseCost
+
 	// Jailbreak Detection Results (request-level, from signal classification)
 	JailbreakDetected   bool    // True if jailbreak was detected in user input
 	JailbreakType       string  // Type of jailbreak detected

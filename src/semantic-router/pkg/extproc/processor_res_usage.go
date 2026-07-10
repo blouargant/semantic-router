@@ -163,6 +163,9 @@ func (r *OpenAIRouter) recordResponseCost(
 ) routerreplay.UsageCost {
 	totalTokens := usage.promptTokens + usage.completionTokens
 	replayUsage := r.buildReplayUsageCost(ctx, usage)
+	// Consolidate the cost for the client surface. The main path bills a single
+	// model; the looper path prices its own per-model usage separately.
+	ctx.ResponseCost = r.buildResponseCost([]costModelLeg{{model: ctx.RequestModel, usage: usage}})
 	eventFields := map[string]interface{}{
 		"request_id":            ctx.RequestID,
 		"model":                 ctx.RequestModel,

@@ -41,6 +41,7 @@ func (r *OpenAIRouter) handleNonStreamingResponseBody(
 	r.markUnverifiedFactualResponse(ctx)
 
 	response := r.applyResponseWarnings(ctx, responseBody, bodyMutation, headerMutation)
+	r.applyResponseCost(response, ctx.ResponseCost, finalBody)
 	r.updateRouterReplayHallucinationStatus(ctx)
 	r.attachRouterReplayResponse(ctx, finalBody, true)
 	return response
@@ -203,6 +204,97 @@ func setResponseBodyMutation(response *ext_proc.ProcessingResponse, body []byte)
 			Body: body,
 		},
 	}
+}
+
+// applyResponseCost returns the consolidated request cost to the client on the
+// non-streaming path: the x-vsr-response-cost* headers plus a cost block inside
+// the body usage object. It runs last so it injects into whatever body the
+// warning/translation steps settled on, falling back to fallbackBody when no
+// mutation was set (plain upstream pass-through). No-op when cost is nil.
+func (r *OpenAIRouter) applyResponseCost(
+	response *ext_proc.ProcessingResponse,
+	cost *responseCost,
+	fallbackBody []byte,
+) {
+	if cost == nil {
+		return
+	}
+	setResponseCostHeaders(response, cost)
+
+	body, ok := currentResponseBody(response)
+	if !ok {
+		body = fallbackBody
+	}
+	injected, changed := injectCostIntoUsage(body, cost)
+	if !changed {
+		return
+	}
+	setResponseBodyMutation(response, injected)
+	ensureContentLengthRemoved(response)
+}
+
+// setResponseCostHeaders writes the three x-vsr-response-cost* headers onto the
+// response, merging with any existing header mutation (warnings, content-length).
+func setResponseCostHeaders(response *ext_proc.ProcessingResponse, cost *responseCost) {
+	appendResponseHeaders(response, []*core.HeaderValueOption{
+		{Header: &core.HeaderValue{Key: headers.VSRResponseCost, RawValue: []byte(formatCost(cost.Total))}},
+		{Header: &core.HeaderValue{Key: headers.VSRResponseCostCurrency, RawValue: []byte(cost.Currency)}},
+		{Header: &core.HeaderValue{Key: headers.VSRResponseCostBreakdown, RawValue: []byte(cost.breakdownHeaderValue())}},
+	})
+}
+
+// appendResponseHeaders adds set-header options to the response's header mutation,
+// creating the mutation when absent.
+func appendResponseHeaders(response *ext_proc.ProcessingResponse, opts []*core.HeaderValueOption) {
+	common := commonResponseFor(response)
+	if common == nil {
+		return
+	}
+	if common.HeaderMutation == nil {
+		common.HeaderMutation = &ext_proc.HeaderMutation{}
+	}
+	common.HeaderMutation.SetHeaders = append(common.HeaderMutation.SetHeaders, opts...)
+}
+
+// ensureContentLengthRemoved guarantees the upstream content-length is dropped so
+// Envoy recomputes it for the mutated body; it is idempotent.
+func ensureContentLengthRemoved(response *ext_proc.ProcessingResponse) {
+	common := commonResponseFor(response)
+	if common == nil {
+		return
+	}
+	if common.HeaderMutation == nil {
+		common.HeaderMutation = &ext_proc.HeaderMutation{}
+	}
+	for _, h := range common.HeaderMutation.RemoveHeaders {
+		if h == "content-length" {
+			return
+		}
+	}
+	common.HeaderMutation.RemoveHeaders = append(common.HeaderMutation.RemoveHeaders, "content-length")
+}
+
+// currentResponseBody returns the body already staged in the response's body
+// mutation, if any.
+func currentResponseBody(response *ext_proc.ProcessingResponse) ([]byte, bool) {
+	common := commonResponseFor(response)
+	if common == nil || common.BodyMutation == nil {
+		return nil, false
+	}
+	if b, ok := common.BodyMutation.Mutation.(*ext_proc.BodyMutation_Body); ok {
+		return b.Body, true
+	}
+	return nil, false
+}
+
+// commonResponseFor extracts the CommonResponse from a response-body processing
+// response, returning nil for any other shape.
+func commonResponseFor(response *ext_proc.ProcessingResponse) *ext_proc.CommonResponse {
+	bodyResponse, ok := response.Response.(*ext_proc.ProcessingResponse_ResponseBody)
+	if !ok {
+		return nil
+	}
+	return bodyResponse.ResponseBody.Response
 }
 
 func isResponseAPIRequest(ctx *RequestContext) bool {
