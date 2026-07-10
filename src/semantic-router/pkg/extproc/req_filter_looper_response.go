@@ -13,27 +13,58 @@ import (
 	httputil "github.com/vllm-project/semantic-router/src/semantic-router/pkg/utils/http"
 )
 
-// createLooperResponse creates an ImmediateResponse from looper output.
+// createLooperResponse creates an ImmediateResponse from looper output. The
+// looper bypasses the response-body pipeline, so cost is consolidated here from
+// the per-model usage the engines reported: priced per model, emitted on the
+// x-vsr-response-cost* headers and injected into the body usage object.
 func (r *OpenAIRouter) createLooperResponse(
 	resp *looper.Response,
 	reqCtx *RequestContext,
 ) *ext_proc.ProcessingResponse {
+	cost := r.looperResponseCost(resp)
+	body := resp.Body
+	if cost != nil {
+		if injected, ok := injectCostIntoUsage(body, cost); ok {
+			body = injected
+		}
+	}
 	return &ext_proc.ProcessingResponse{
 		Response: &ext_proc.ProcessingResponse_ImmediateResponse{
 			ImmediateResponse: &ext_proc.ImmediateResponse{
 				Status: &typev3.HttpStatus{Code: typev3.StatusCode_OK},
 				Headers: &ext_proc.HeaderMutation{
-					SetHeaders: buildLooperResponseHeaders(resp, reqCtx),
+					SetHeaders: buildLooperResponseHeaders(resp, reqCtx, cost),
 				},
-				Body: resp.Body,
+				Body: body,
 			},
 		},
 	}
 }
 
+// looperResponseCost prices the looper's per-model token usage at each model's
+// own configured rate. Returns nil when the run reported no per-model usage or
+// none of its models are priced.
+func (r *OpenAIRouter) looperResponseCost(resp *looper.Response) *responseCost {
+	if resp == nil || len(resp.PerModelUsage) == 0 {
+		return nil
+	}
+	legs := make([]costModelLeg, 0, len(resp.PerModelUsage))
+	for _, mu := range resp.PerModelUsage {
+		legs = append(legs, costModelLeg{
+			model: mu.Model,
+			usage: responseUsageMetrics{
+				promptTokens:     int(mu.Usage.PromptTokens),
+				completionTokens: int(mu.Usage.CompletionTokens),
+			},
+		})
+	}
+	return r.buildResponseCost(legs)
+}
+
 func buildLooperResponseHeaders(
 	resp *looper.Response,
 	reqCtx *RequestContext,
+	cost *responseCost,
 ) []*core.HeaderValueOption {
 	// content-type is a real response header for the immediate body and always
 	// rides; the v0.4 keystone headers (#2203) and the final routing facts ride
@@ -42,6 +73,7 @@ func buildLooperResponseHeaders(
 		newHeaderValueOption("content-type", resp.ContentType),
 	}
 	setHeaders = append(setHeaders, httputil.KeystoneHeaderOptions(headers.ResponsePathLooper)...)
+	appendLooperCostHeaders(&setHeaders, cost)
 	appendLooperRoutingFacts(&setHeaders, resp, reqCtx)
 	// The looper execution trace, intermediate decision details and matched
 	// signals are demoted to the x-vsr-debug surface (#2205).
@@ -51,6 +83,19 @@ func buildLooperResponseHeaders(
 		appendLooperSignalHeaders(&setHeaders, reqCtx)
 	}
 	return setHeaders
+}
+
+// appendLooperCostHeaders adds the consolidated cost headers to the looper
+// immediate response. No-op when cost is nil (no priced model in the run).
+func appendLooperCostHeaders(setHeaders *[]*core.HeaderValueOption, cost *responseCost) {
+	if cost == nil {
+		return
+	}
+	*setHeaders = append(*setHeaders,
+		newHeaderValueOption(headers.VSRResponseCost, formatCost(cost.Total)),
+		newHeaderValueOption(headers.VSRResponseCostCurrency, cost.Currency),
+		newHeaderValueOption(headers.VSRResponseCostBreakdown, cost.breakdownHeaderValue()),
+	)
 }
 
 // appendLooperTraceHeaders adds the looper execution trace (selected model,
