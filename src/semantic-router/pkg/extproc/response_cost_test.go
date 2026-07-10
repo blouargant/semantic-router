@@ -229,6 +229,20 @@ func TestInjectCostIntoStreamingChunk(t *testing.T) {
 			t.Error("expected no-op when no usage present")
 		}
 	})
+
+	t.Run("preserves CRLF framing", func(t *testing.T) {
+		chunk := "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":5,\"total_tokens\":15}}\r\n\r\n"
+		out, ok := injectCostIntoStreamingChunk(chunk, cost)
+		if !ok {
+			t.Fatal("expected injection")
+		}
+		if !strings.Contains(out, "\"cost\":0.044") {
+			t.Errorf("missing cost: %s", out)
+		}
+		if !strings.Contains(out, "}\r\n\r\n") {
+			t.Errorf("CRLF framing not preserved: %q", out)
+		}
+	})
 }
 
 func TestInjectStreamingCost_SingleModel(t *testing.T) {

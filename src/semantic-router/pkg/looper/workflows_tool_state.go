@@ -592,19 +592,6 @@ func workflowProgressUsage(plannerResp *ModelResponse, results []workflowStepRes
 	return usage
 }
 
-// workflowProgressPerModelUsage is the per-model companion to
-// workflowProgressUsage: it groups the same planner/step/extra responses by
-// model so a tool-call interrupt response carries the same cost breakdown a
-// completed workflow would.
-func workflowProgressPerModelUsage(plannerResp *ModelResponse, results []workflowStepResult, extra ...*ModelResponse) []ModelUsage {
-	all := []*ModelResponse{plannerResp}
-	for _, result := range results {
-		all = append(all, result.responses...)
-	}
-	all = append(all, extra...)
-	return GroupUsageByModel(all...)
-}
-
 func workflowProgressModels(cfg workflowsExecutionConfig, plannerResp *ModelResponse, results []workflowStepResult, extra ...*ModelResponse) []string {
 	var models []string
 	models = appendUniqueWorkflowModel(models, cfg.PlannerModel)

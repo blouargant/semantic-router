@@ -149,7 +149,14 @@ func injectCostIntoUsage(body []byte, cost *responseCost) ([]byte, bool) {
 // This is how cost reaches a streaming client: headers are already flushed by the
 // time usage is known, so the include_usage chunk is the only surface. Lines
 // without a usage object (content deltas, [DONE]) are left byte-for-byte intact,
-// preserving SSE framing. Returns changed=false when no usage line was found.
+// preserving SSE framing (including a trailing CR when upstream uses CRLF).
+// Returns changed=false when no usage line was found.
+//
+// Limitation: this operates on one Envoy body chunk. If the include_usage event
+// is split across chunk boundaries, no single chunk holds a complete "data:"
+// line, so cost cannot be injected and (headers already flushed) is silently
+// absent from that stream. vLLM emits the usage event as one frame, so this is
+// rare in practice; the non-streaming and looper paths are unaffected.
 func injectCostIntoStreamingChunk(chunk string, cost *responseCost) (string, bool) {
 	if cost == nil {
 		return chunk, false
@@ -160,7 +167,9 @@ func injectCostIntoStreamingChunk(chunk string, cost *responseCost) (string, boo
 		if !strings.HasPrefix(line, "data: ") {
 			continue
 		}
-		payload := strings.TrimSpace(strings.TrimPrefix(line, "data: "))
+		// Preserve a trailing CR so CRLF framing survives the rewrite.
+		hasCR := strings.HasSuffix(line, "\r")
+		payload := strings.TrimSpace(strings.TrimPrefix(strings.TrimSuffix(line, "\r"), "data: "))
 		if payload == "" || payload == "[DONE]" {
 			continue
 		}
@@ -168,7 +177,11 @@ func injectCostIntoStreamingChunk(chunk string, cost *responseCost) (string, boo
 		if !ok {
 			continue
 		}
-		lines[i] = "data: " + string(injected)
+		rebuilt := "data: " + string(injected)
+		if hasCR {
+			rebuilt += "\r"
+		}
+		lines[i] = rebuilt
 		changed = true
 	}
 	if !changed {
