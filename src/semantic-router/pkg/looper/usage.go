@@ -58,3 +58,37 @@ func (u TokenUsage) Map() map[string]interface{} {
 		"total_tokens":      u.TotalTokens,
 	}
 }
+
+// ModelUsage pairs a model name with the token usage attributed to it across one
+// looper execution. Repeated calls to the same model are summed into one entry.
+// It carries only tokens, not cost: pricing lives in the router (config +
+// extproc), so the breakdown here is priced downstream where model pricing is
+// resolved, keeping this package free of pricing responsibility.
+type ModelUsage struct {
+	Model string     `json:"model"`
+	Usage TokenUsage `json:"usage"`
+}
+
+// GroupUsageByModel sums per-call usage grouped by ModelResponse.Model, preserving
+// first-seen order so the breakdown is deterministic. nil responses and responses
+// with an empty Model are skipped. This is the per-model companion to SumUsage:
+// SumUsage answers "how many tokens total", GroupUsageByModel answers "how many
+// per model", which is what the router needs to attribute cost when a single
+// looper run calls several differently-priced models.
+func GroupUsageByModel(resps ...*ModelResponse) []ModelUsage {
+	index := map[string]int{}
+	out := []ModelUsage{}
+	for _, resp := range resps {
+		if resp == nil || resp.Model == "" {
+			continue
+		}
+		i, ok := index[resp.Model]
+		if !ok {
+			i = len(out)
+			index[resp.Model] = i
+			out = append(out, ModelUsage{Model: resp.Model})
+		}
+		out[i].Usage = out[i].Usage.Add(resp)
+	}
+	return out
+}

@@ -213,6 +213,7 @@ func (l *RatingsLooper) formatRatingsJSONResponse(responses []*ModelResponse, mo
 		Iterations:    iterations,
 		AlgorithmType: "ratings",
 		Usage:         usage,
+		PerModelUsage: GroupUsageByModel(responses...),
 	}, nil
 }
 
@@ -318,5 +319,6 @@ func (l *RatingsLooper) formatRatingsStreamingResponse(responses []*ModelRespons
 		Iterations:    iterations,
 		AlgorithmType: "ratings",
 		Usage:         SumUsage(responses...),
+		PerModelUsage: GroupUsageByModel(responses...),
 	}, nil
 }

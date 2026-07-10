@@ -121,10 +121,11 @@ type workflowToolCallInterrupt struct {
 }
 
 type workflowExecutionSummary struct {
-	usage      TokenUsage
-	modelsUsed []string
-	failed     []FusionFailedModel
-	iterations int
+	usage         TokenUsage
+	perModelUsage []ModelUsage
+	modelsUsed    []string
+	failed        []FusionFailedModel
+	iterations    int
 }
 
 func (l *WorkflowsLooper) Execute(ctx context.Context, req *Request) (*Response, error) {
@@ -191,9 +192,9 @@ func (l *WorkflowsLooper) Execute(ctx context.Context, req *Request) (*Response,
 	summary := summarizeWorkflowExecution(cfg, plannerResp, stepResults, finalResp)
 	trace := buildWorkflowTrace(cfg, workerModels, plan, stepResults, summary.failed)
 	if req.IsStreaming {
-		return formatWorkflowStreamingResponse(finalResp, summary.modelsUsed, summary.iterations, trace, summary.usage, cfg)
+		return formatWorkflowStreamingResponse(finalResp, summary.modelsUsed, summary.iterations, trace, summary.usage, summary.perModelUsage, cfg)
 	}
-	return formatWorkflowJSONResponse(finalResp, summary.modelsUsed, summary.iterations, trace, summary.usage, cfg)
+	return formatWorkflowJSONResponse(finalResp, summary.modelsUsed, summary.iterations, trace, summary.usage, summary.perModelUsage, cfg)
 }
 
 func (l *WorkflowsLooper) buildWorkflowPlan(

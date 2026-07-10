@@ -1143,7 +1143,7 @@ func TestWorkflowsFinalToolCallsArePreserved(t *testing.T) {
 	trace := &workflowTrace{Mode: config.WorkflowModeDynamic}
 	cfg := workflowsExecutionConfig{IncludeIntermediateResponses: true}
 
-	resp, err := formatWorkflowJSONResponse(finalResp, []string{"qwen-coordinator"}, 1, trace, TokenUsage{}, cfg)
+	resp, err := formatWorkflowJSONResponse(finalResp, []string{"qwen-coordinator"}, 1, trace, TokenUsage{}, nil, cfg)
 	if err != nil {
 		t.Fatalf("formatWorkflowJSONResponse failed: %v", err)
 	}
@@ -1164,7 +1164,7 @@ func TestWorkflowsFinalToolCallsArePreserved(t *testing.T) {
 		t.Fatalf("flow trace missing from response: %s", string(resp.Body))
 	}
 
-	streaming, err := formatWorkflowStreamingResponse(finalResp, []string{"qwen-coordinator"}, 1, trace, TokenUsage{}, cfg)
+	streaming, err := formatWorkflowStreamingResponse(finalResp, []string{"qwen-coordinator"}, 1, trace, TokenUsage{}, nil, cfg)
 	if err != nil {
 		t.Fatalf("formatWorkflowStreamingResponse failed: %v", err)
 	}

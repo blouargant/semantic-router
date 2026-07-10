@@ -251,9 +251,9 @@ func (l *WorkflowsLooper) finishResumedWorkflow(
 	summary := summarizeWorkflowExecution(cfg, state.PlannerResp, results, finalResp)
 	trace := buildWorkflowTrace(cfg, state.WorkerModels, state.Plan, results, summary.failed)
 	if req.IsStreaming {
-		return formatWorkflowStreamingResponse(finalResp, summary.modelsUsed, summary.iterations, trace, summary.usage, cfg)
+		return formatWorkflowStreamingResponse(finalResp, summary.modelsUsed, summary.iterations, trace, summary.usage, summary.perModelUsage, cfg)
 	}
-	return formatWorkflowJSONResponse(finalResp, summary.modelsUsed, summary.iterations, trace, summary.usage, cfg)
+	return formatWorkflowJSONResponse(finalResp, summary.modelsUsed, summary.iterations, trace, summary.usage, summary.perModelUsage, cfg)
 }
 
 func (l *WorkflowsLooper) finishResumedWorkflowFinal(
@@ -269,7 +269,7 @@ func (l *WorkflowsLooper) finishResumedWorkflowFinal(
 	trace := buildWorkflowTrace(cfg, state.WorkerModels, state.Plan, state.StepResults, summary.failed)
 	trace.FinalToolTrajectory = workflowToolTurnTraces(state.ToolTrajectory)
 	if req.IsStreaming {
-		return formatWorkflowStreamingResponse(finalResp, summary.modelsUsed, summary.iterations, trace, summary.usage, cfg)
+		return formatWorkflowStreamingResponse(finalResp, summary.modelsUsed, summary.iterations, trace, summary.usage, summary.perModelUsage, cfg)
 	}
-	return formatWorkflowJSONResponse(finalResp, summary.modelsUsed, summary.iterations, trace, summary.usage, cfg)
+	return formatWorkflowJSONResponse(finalResp, summary.modelsUsed, summary.iterations, trace, summary.usage, summary.perModelUsage, cfg)
 }

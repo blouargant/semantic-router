@@ -135,16 +135,18 @@ func (l *FusionLooper) Execute(ctx context.Context, req *Request) (*Response, er
 	if err != nil {
 		return nil, err
 	}
-	usage := SumUsage(panelResponses...).Add(analysisResp, finalResp)
+	allResponses := append(append([]*ModelResponse{}, panelResponses...), analysisResp, finalResp)
+	usage := SumUsage(allResponses...)
+	perModel := GroupUsageByModel(allResponses...)
 
 	trace := buildFusionTrace(cfg, groundedPanel, failedModels, analysis, groundingMode, groundingScores)
 	modelsUsed := orderedFusionModelsUsed(cfg.AnalysisModels, cfg.Model)
 	iterations := len(cfg.AnalysisModels) + 2
 
 	if req.IsStreaming {
-		return l.formatFusionStreamingResponse(finalResp, modelsUsed, iterations, cfg, trace, usage)
+		return l.formatFusionStreamingResponse(finalResp, modelsUsed, iterations, cfg, trace, usage, perModel)
 	}
-	return l.formatFusionJSONResponse(finalResp, modelsUsed, iterations, cfg, trace, usage)
+	return l.formatFusionJSONResponse(finalResp, modelsUsed, iterations, cfg, trace, usage, perModel)
 }
 
 func (l *FusionLooper) validateFusionModels(cfg fusionExecutionConfig) error {
@@ -544,9 +546,10 @@ func (l *FusionLooper) formatFusionJSONResponse(
 	cfg fusionExecutionConfig,
 	trace *FusionTrace,
 	usage TokenUsage,
+	perModel []ModelUsage,
 ) (*Response, error) {
 	if finalResp.HasToolCalls {
-		return l.formatFusionToolCallJSONResponse(finalResp, modelsUsed, iterations, cfg, trace, usage)
+		return l.formatFusionToolCallJSONResponse(finalResp, modelsUsed, iterations, cfg, trace, usage, perModel)
 	}
 
 	completion := map[string]interface{}{
@@ -582,6 +585,7 @@ func (l *FusionLooper) formatFusionJSONResponse(
 		AlgorithmType:         "fusion",
 		IntermediateResponses: trace,
 		Usage:                 usage,
+		PerModelUsage:         perModel,
 	}, nil
 }
 
@@ -592,6 +596,7 @@ func (l *FusionLooper) formatFusionToolCallJSONResponse(
 	cfg fusionExecutionConfig,
 	trace *FusionTrace,
 	usage TokenUsage,
+	perModel []ModelUsage,
 ) (*Response, error) {
 	var completion map[string]interface{}
 	if err := json.Unmarshal(finalResp.Raw, &completion); err != nil {
@@ -616,6 +621,7 @@ func (l *FusionLooper) formatFusionToolCallJSONResponse(
 		AlgorithmType:         "fusion",
 		IntermediateResponses: trace,
 		Usage:                 usage,
+		PerModelUsage:         perModel,
 	}, nil
 }
 
@@ -626,6 +632,7 @@ func (l *FusionLooper) formatFusionStreamingResponse(
 	cfg fusionExecutionConfig,
 	trace *FusionTrace,
 	usage TokenUsage,
+	perModel []ModelUsage,
 ) (*Response, error) {
 	timestamp := time.Now().Unix()
 	id := fmt.Sprintf("chatcmpl-fusion-%d", timestamp)
@@ -644,6 +651,7 @@ func (l *FusionLooper) formatFusionStreamingResponse(
 	resp := streamingLooperResponse(body, finalResp.Model, modelsUsed, iterations, "fusion")
 	resp.IntermediateResponses = trace
 	resp.Usage = usage
+	resp.PerModelUsage = perModel
 	return resp, nil
 }
 

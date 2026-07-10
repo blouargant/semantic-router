@@ -179,6 +179,7 @@ type AggregatedResponse struct {
 // is preserved (with metadata patched) to avoid dropping tool_calls.
 func (l *BaseLooper) formatJSONResponse(agg *AggregatedResponse, modelsUsed []string, iterations int) (*Response, error) {
 	usage := SumUsage(agg.Responses...)
+	perModel := GroupUsageByModel(agg.Responses...)
 
 	// If the final response has tool_calls, use the original raw response
 	// but patch the model name and id to reflect the looper wrapper.
@@ -199,6 +200,7 @@ func (l *BaseLooper) formatJSONResponse(agg *AggregatedResponse, modelsUsed []st
 						Iterations:    iterations,
 						AlgorithmType: "simple",
 						Usage:         usage,
+						PerModelUsage: perModel,
 					}, nil
 				}
 			}
@@ -220,6 +222,7 @@ func (l *BaseLooper) formatJSONResponse(agg *AggregatedResponse, modelsUsed []st
 				Iterations:    iterations,
 				AlgorithmType: "simple",
 				Usage:         usage,
+				PerModelUsage: perModel,
 			}, nil
 		}
 	}
@@ -255,6 +258,7 @@ func (l *BaseLooper) formatJSONResponse(agg *AggregatedResponse, modelsUsed []st
 		Iterations:    iterations,
 		AlgorithmType: "simple",
 		Usage:         usage,
+		PerModelUsage: perModel,
 	}, nil
 }
 
@@ -352,10 +356,12 @@ func (l *BaseLooper) formatStreamingResponse(agg *AggregatedResponse, modelsUsed
 	// framing instead of simulating it. This still returns a single response body,
 	// but avoids the "fake streaming" behavior where we pre-split text.
 	usage := SumUsage(agg.Responses...)
+	perModel := GroupUsageByModel(agg.Responses...)
 	if len(agg.Responses) > 0 && agg.Responses[0].IsStreaming {
 		body := concatModelSSEStreams(agg.Responses)
 		resp := streamingLooperResponse(body, agg.FinalModel, modelsUsed, iterations, "simple")
 		resp.Usage = usage
+		resp.PerModelUsage = perModel
 		return resp, nil
 	}
 
@@ -368,6 +374,7 @@ func (l *BaseLooper) formatStreamingResponse(agg *AggregatedResponse, modelsUsed
 	)
 	resp := streamingLooperResponse(sseBody, agg.FinalModel, modelsUsed, iterations, "simple")
 	resp.Usage = usage
+	resp.PerModelUsage = perModel
 	return resp, nil
 }
 

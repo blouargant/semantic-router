@@ -56,10 +56,11 @@ func formatWorkflowJSONResponse(
 	iterations int,
 	trace *workflowTrace,
 	usage TokenUsage,
+	perModel []ModelUsage,
 	cfg workflowsExecutionConfig,
 ) (*Response, error) {
 	if finalResp.HasToolCalls {
-		return formatWorkflowToolCallJSONResponse(finalResp, modelsUsed, iterations, trace, usage, cfg)
+		return formatWorkflowToolCallJSONResponse(finalResp, modelsUsed, iterations, trace, usage, perModel, cfg)
 	}
 	completion := map[string]interface{}{
 		"id":      fmt.Sprintf("chatcmpl-flow-%d", time.Now().UnixNano()),
@@ -94,6 +95,7 @@ func formatWorkflowJSONResponse(
 		AlgorithmType:         "workflows",
 		IntermediateResponses: trace,
 		Usage:                 usage,
+		PerModelUsage:         perModel,
 	}, nil
 }
 
@@ -103,6 +105,7 @@ func formatWorkflowToolCallJSONResponse(
 	iterations int,
 	trace *workflowTrace,
 	usage TokenUsage,
+	perModel []ModelUsage,
 	cfg workflowsExecutionConfig,
 ) (*Response, error) {
 	var completion map[string]interface{}
@@ -128,6 +131,7 @@ func formatWorkflowToolCallJSONResponse(
 		AlgorithmType:         "workflows",
 		IntermediateResponses: trace,
 		Usage:                 usage,
+		PerModelUsage:         perModel,
 	}, nil
 }
 
@@ -137,6 +141,7 @@ func formatWorkflowStreamingResponse(
 	iterations int,
 	trace *workflowTrace,
 	usage TokenUsage,
+	perModel []ModelUsage,
 	cfg workflowsExecutionConfig,
 ) (*Response, error) {
 	timestamp := time.Now().Unix()
@@ -156,6 +161,7 @@ func formatWorkflowStreamingResponse(
 	resp := streamingLooperResponse(body, finalResp.Model, modelsUsed, iterations, "workflows")
 	resp.IntermediateResponses = trace
 	resp.Usage = usage
+	resp.PerModelUsage = perModel
 	return resp, nil
 }
 

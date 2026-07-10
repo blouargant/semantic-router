@@ -133,6 +133,7 @@ func (l *RLDrivenLooper) Execute(ctx context.Context, req *Request) (*Response, 
 	scores := make(map[string]float64)
 	var modelsUsed []string
 	var usage TokenUsage
+	var perModelResponses []*ModelResponse
 	iteration := 0
 
 	for _, modelName := range multiRoundResult.SelectedModels {
@@ -200,6 +201,7 @@ func (l *RLDrivenLooper) Execute(ctx context.Context, req *Request) (*Response, 
 		responses[modelName] = resp.Content
 		scores[modelName] = score
 		usage = usage.Add(resp)
+		perModelResponses = append(perModelResponses, resp)
 		modelsUsed = append(modelsUsed, displayName)
 	}
 
@@ -235,10 +237,11 @@ func (l *RLDrivenLooper) Execute(ctx context.Context, req *Request) (*Response, 
 	})
 
 	// Format output
+	perModel := GroupUsageByModel(perModelResponses...)
 	if req.IsStreaming {
-		return l.formatStreamingResponse(aggregatedContent, bestModel, modelsUsed, iteration, usage)
+		return l.formatStreamingResponse(aggregatedContent, bestModel, modelsUsed, iteration, usage, perModel)
 	}
-	return l.formatJSONResponse(aggregatedContent, bestModel, modelsUsed, iteration, usage)
+	return l.formatJSONResponse(aggregatedContent, bestModel, modelsUsed, iteration, usage, perModel)
 }
 
 // buildSelectionContext creates a SelectionContext from the looper Request
@@ -313,14 +316,15 @@ func (l *RLDrivenLooper) executeAllModels(ctx context.Context, req *Request) (*R
 	}
 
 	usage := SumUsage(responses...)
+	perModel := GroupUsageByModel(responses...)
 	if req.IsStreaming {
-		return l.formatStreamingResponse(content, modelsUsed[len(modelsUsed)-1], modelsUsed, iteration, usage)
+		return l.formatStreamingResponse(content, modelsUsed[len(modelsUsed)-1], modelsUsed, iteration, usage, perModel)
 	}
-	return l.formatJSONResponse(content, modelsUsed[len(modelsUsed)-1], modelsUsed, iteration, usage)
+	return l.formatJSONResponse(content, modelsUsed[len(modelsUsed)-1], modelsUsed, iteration, usage, perModel)
 }
 
 // formatJSONResponse creates a JSON ChatCompletion response
-func (l *RLDrivenLooper) formatJSONResponse(content, model string, modelsUsed []string, iterations int, usage TokenUsage) (*Response, error) {
+func (l *RLDrivenLooper) formatJSONResponse(content, model string, modelsUsed []string, iterations int, usage TokenUsage, perModel []ModelUsage) (*Response, error) {
 	completion := map[string]interface{}{
 		"id":      fmt.Sprintf("chatcmpl-rl-%d", time.Now().UnixNano()),
 		"object":  "chat.completion",
@@ -352,11 +356,12 @@ func (l *RLDrivenLooper) formatJSONResponse(content, model string, modelsUsed []
 		Iterations:    iterations,
 		AlgorithmType: "rl_driven",
 		Usage:         usage,
+		PerModelUsage: perModel,
 	}, nil
 }
 
 // formatStreamingResponse creates an SSE streaming response
-func (l *RLDrivenLooper) formatStreamingResponse(content, model string, modelsUsed []string, iterations int, usage TokenUsage) (*Response, error) {
+func (l *RLDrivenLooper) formatStreamingResponse(content, model string, modelsUsed []string, iterations int, usage TokenUsage, perModel []ModelUsage) (*Response, error) {
 	timestamp := time.Now().Unix()
 	id := fmt.Sprintf("chatcmpl-rl-%d", timestamp)
 
@@ -429,5 +434,6 @@ func (l *RLDrivenLooper) formatStreamingResponse(content, model string, modelsUs
 		Iterations:    iterations,
 		AlgorithmType: "rl_driven",
 		Usage:         usage,
+		PerModelUsage: perModel,
 	}, nil
 }

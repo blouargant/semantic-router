@@ -99,6 +99,13 @@ type Response struct {
 	// this execution. It mirrors the usage block embedded in Body so callers
 	// (extproc, dashboard, metrics) can read totals without re-parsing the body.
 	Usage TokenUsage `json:"usage,omitempty"`
+
+	// PerModelUsage breaks Usage down by model, in first-seen order. When a run
+	// calls several differently-priced models (fusion panels, ReMoM rounds,
+	// workflow steps), the router prices each entry with that model's own rate to
+	// produce the consolidated response cost. Empty for runs where no model
+	// reported usage.
+	PerModelUsage []ModelUsage `json:"per_model_usage,omitempty"`
 }
 
 // Looper defines the interface for multi-model execution strategies

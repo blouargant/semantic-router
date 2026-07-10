@@ -13,12 +13,14 @@ func summarizeWorkflowExecution(
 		modelsUsed: make([]string, 0, 2+len(stepResults)),
 		iterations: 1,
 	}
+	allResponses := []*ModelResponse{plannerResp, finalResp}
 	summary.modelsUsed = appendUniqueWorkflowModel(summary.modelsUsed, cfg.PlannerModel)
 	if plannerResp != nil {
 		summary.iterations++
 	}
 	for _, result := range stepResults {
 		summary.usage = summary.usage.Add(result.responses...)
+		allResponses = append(allResponses, result.responses...)
 		summary.iterations += len(result.responses) + len(result.failed)
 		summary.failed = append(summary.failed, result.failed...)
 		for _, resp := range result.responses {
@@ -26,6 +28,7 @@ func summarizeWorkflowExecution(
 		}
 	}
 	summary.modelsUsed = appendUniqueWorkflowModel(summary.modelsUsed, finalResp.Model)
+	summary.perModelUsage = GroupUsageByModel(allResponses...)
 	return summary
 }
 

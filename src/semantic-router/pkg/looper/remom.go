@@ -270,6 +270,7 @@ type remomScheduleResult struct {
 	modelsUsed        map[string]bool
 	totalIterations   int
 	usage             TokenUsage
+	perModelUsage     []ModelUsage
 }
 
 // Execute implements the Looper interface for ReMoM
@@ -326,9 +327,9 @@ func (l *ReMoMLooper) Execute(ctx context.Context, req *Request) (*Response, err
 	}
 
 	if req.IsStreaming {
-		return l.formatReMoMStreamingResponse(finalResponse, result.allRoundResponses, modelsUsedSlice, result.totalIterations, result.usage, cfg)
+		return l.formatReMoMStreamingResponse(finalResponse, result.allRoundResponses, modelsUsedSlice, result.totalIterations, result.usage, result.perModelUsage, cfg)
 	}
-	return l.formatReMoMJSONResponse(finalResponse, result.allRoundResponses, modelsUsedSlice, result.totalIterations, result.usage, cfg)
+	return l.formatReMoMJSONResponse(finalResponse, result.allRoundResponses, modelsUsedSlice, result.totalIterations, result.usage, result.perModelUsage, cfg)
 }
 
 func (l *ReMoMLooper) runReMoMSchedule(
@@ -342,6 +343,7 @@ func (l *ReMoMLooper) runReMoMSchedule(
 	modelsUsed := make(map[string]bool)
 	totalIterations := 0
 	var usage TokenUsage
+	var perModelResponses []*ModelResponse
 	currentMessages := cloneMessages(req.OriginalRequest)
 	if requestsJSONAction(req.OutputContractSpec) {
 		currentMessages = replaceLastMessage(currentMessages, originalWithOutputContract)
@@ -369,6 +371,7 @@ func (l *ReMoMLooper) runReMoMSchedule(
 		allRoundResponses = append(allRoundResponses, roundResp)
 		trackReMoMModelsUsed(modelsUsed, responses)
 		usage = usage.Add(responses...)
+		perModelResponses = append(perModelResponses, responses...)
 		totalIterations += len(responses)
 		logging.Infof("[ReMoM] Round %d completed: %d responses", roundIdx+1, len(responses))
 	}
@@ -378,6 +381,7 @@ func (l *ReMoMLooper) runReMoMSchedule(
 		modelsUsed:        modelsUsed,
 		totalIterations:   totalIterations,
 		usage:             usage,
+		perModelUsage:     GroupUsageByModel(perModelResponses...),
 	}, nil
 }
 
@@ -508,6 +512,7 @@ func (l *ReMoMLooper) formatReMoMJSONResponse(
 	modelsUsed []string,
 	iterations int,
 	usage TokenUsage,
+	perModel []ModelUsage,
 	cfg *config.ReMoMAlgorithmConfig,
 ) (*Response, error) {
 	completion := map[string]interface{}{
@@ -547,6 +552,7 @@ func (l *ReMoMLooper) formatReMoMJSONResponse(
 		AlgorithmType:         "remom",
 		IntermediateResponses: allRoundResponses,
 		Usage:                 usage,
+		PerModelUsage:         perModel,
 	}, nil
 }
 
@@ -557,6 +563,7 @@ func (l *ReMoMLooper) formatReMoMStreamingResponse(
 	modelsUsed []string,
 	iterations int,
 	usage TokenUsage,
+	perModel []ModelUsage,
 	cfg *config.ReMoMAlgorithmConfig,
 ) (*Response, error) {
 	timestamp := time.Now().Unix()
@@ -566,6 +573,7 @@ func (l *ReMoMLooper) formatReMoMStreamingResponse(
 	resp := streamingLooperResponse(sseBody, finalResponse.Model, modelsUsed, iterations, "remom")
 	resp.IntermediateResponses = allRoundResponses
 	resp.Usage = usage
+	resp.PerModelUsage = perModel
 	return resp, nil
 }
 

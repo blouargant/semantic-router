@@ -27,6 +27,48 @@ func resp(prompt, completion, total int64) *ModelResponse {
 	return &ModelResponse{Usage: TokenUsage{PromptTokens: prompt, CompletionTokens: completion, TotalTokens: total}}
 }
 
+func respFor(model string, prompt, completion, total int64) *ModelResponse {
+	r := resp(prompt, completion, total)
+	r.Model = model
+	return r
+}
+
+func TestGroupUsageByModel(t *testing.T) {
+	t.Run("sums repeated models in first-seen order", func(t *testing.T) {
+		got := GroupUsageByModel(
+			respFor("premium", 100, 20, 120),
+			respFor("balanced", 50, 10, 60),
+			respFor("premium", 10, 5, 15),
+		)
+		want := []ModelUsage{
+			{Model: "premium", Usage: TokenUsage{PromptTokens: 110, CompletionTokens: 25, TotalTokens: 135}},
+			{Model: "balanced", Usage: TokenUsage{PromptTokens: 50, CompletionTokens: 10, TotalTokens: 60}},
+		}
+		if len(got) != len(want) {
+			t.Fatalf("got %d groups, want %d: %+v", len(got), len(want), got)
+		}
+		for i := range want {
+			if got[i] != want[i] {
+				t.Errorf("group[%d] = %+v, want %+v", i, got[i], want[i])
+			}
+		}
+	})
+
+	t.Run("skips nil and empty-model responses", func(t *testing.T) {
+		got := GroupUsageByModel(nil, respFor("", 5, 5, 10), respFor("m", 1, 1, 2))
+		want := []ModelUsage{{Model: "m", Usage: TokenUsage{PromptTokens: 1, CompletionTokens: 1, TotalTokens: 2}}}
+		if len(got) != 1 || got[0] != want[0] {
+			t.Errorf("GroupUsageByModel() = %+v, want %+v", got, want)
+		}
+	})
+
+	t.Run("no responses yields empty breakdown", func(t *testing.T) {
+		if got := GroupUsageByModel(); len(got) != 0 {
+			t.Errorf("GroupUsageByModel() = %+v, want empty", got)
+		}
+	})
+}
+
 func TestSumUsage(t *testing.T) {
 	tests := []struct {
 		name  string

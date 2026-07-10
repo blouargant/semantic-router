@@ -535,11 +535,12 @@ func (l *WorkflowsLooper) formatWorkflowToolCallInterrupt(
 	}
 	extraProgress := workflowPendingProgressResponses(state, &patchedResp)
 	usage := workflowProgressUsage(state.PlannerResp, traceResults, extraProgress...)
+	perModel := workflowProgressPerModelUsage(state.PlannerResp, traceResults, extraProgress...)
 	modelsUsed := workflowProgressModels(cfg, state.PlannerResp, traceResults, extraProgress...)
 	if state.Streaming {
-		return formatWorkflowStreamingResponse(&patchedResp, modelsUsed, state.Iteration, trace, usage, cfg)
+		return formatWorkflowStreamingResponse(&patchedResp, modelsUsed, state.Iteration, trace, usage, perModel, cfg)
 	}
-	return formatWorkflowJSONResponse(&patchedResp, modelsUsed, state.Iteration, trace, usage, cfg)
+	return formatWorkflowJSONResponse(&patchedResp, modelsUsed, state.Iteration, trace, usage, perModel, cfg)
 }
 
 func workflowPendingTraceStep(state *workflowPendingToolState) workflowPlanStep {
@@ -589,6 +590,19 @@ func workflowProgressUsage(plannerResp *ModelResponse, results []workflowStepRes
 	}
 	usage = usage.Add(extra...)
 	return usage
+}
+
+// workflowProgressPerModelUsage is the per-model companion to
+// workflowProgressUsage: it groups the same planner/step/extra responses by
+// model so a tool-call interrupt response carries the same cost breakdown a
+// completed workflow would.
+func workflowProgressPerModelUsage(plannerResp *ModelResponse, results []workflowStepResult, extra ...*ModelResponse) []ModelUsage {
+	all := []*ModelResponse{plannerResp}
+	for _, result := range results {
+		all = append(all, result.responses...)
+	}
+	all = append(all, extra...)
+	return GroupUsageByModel(all...)
 }
 
 func workflowProgressModels(cfg workflowsExecutionConfig, plannerResp *ModelResponse, results []workflowStepResult, extra ...*ModelResponse) []string {
