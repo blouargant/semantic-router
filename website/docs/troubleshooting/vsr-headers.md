@@ -43,6 +43,42 @@ Cache-hit responses can emit cache headers, but they do not re-run routing and t
 
 This header consolidates the v0.3 `x-vsr-hallucination-detected`, `x-vsr-unverified-factual-response`, and `x-vsr-response-jailbreak-detected` headers. The per-warning detail (hallucination spans, jailbreak type/confidence, fact-check verification context) is kept in the replay record rather than the response headers, recoverable via `x-vsr-replay-id`; the individual warning and detail headers are removed from the v0.4 contract.
 
+## Response Cost
+
+The router consolidates the cost of every upstream model call made for a request — one on the main routing path, several across a looper run that fans out to multiple models — and returns it to the client. Each model call is priced at that model's own configured rate (`pricing.prompt_per_1m` / `pricing.completion_per_1m`, see [Configuration](../installation/configuration.md)) and the results are summed, so a looper run that mixes differently-priced models is billed accurately rather than at a single model's rate.
+
+| Header | Description | Example |
+| ------ | ----------- | ------- |
+| `x-vsr-response-cost` | Consolidated cost total, as a decimal number in the currency named by `x-vsr-response-cost-currency`. | `0.004215` |
+| `x-vsr-response-cost-currency` | Currency of `x-vsr-response-cost`. | `USD` |
+| `x-vsr-response-cost-breakdown` | Per-model split as semicolon-separated `model=cost` pairs, in first-called order. | `premium=0.0031;balanced=0.0011` |
+
+The same numbers are mirrored inside the response body `usage` object as `cost` (number), `currency` (string), and `cost_per_model` (array of `{model, cost}`):
+
+```json
+{
+  "usage": {
+    "prompt_tokens": 1200,
+    "completion_tokens": 340,
+    "total_tokens": 1540,
+    "cost": 0.004215,
+    "currency": "USD",
+    "cost_per_model": [
+      { "model": "premium", "cost": 0.0031 },
+      { "model": "balanced", "cost": 0.001115 }
+    ]
+  }
+}
+```
+
+Emission rules:
+
+- **Opt-in via pricing.** The cost surface appears only when at least one model involved has pricing configured. A request whose models are all unpriced emits no cost headers and leaves the body `usage` object untouched.
+- **Both surfaces on non-streaming and looper responses.** Headers and body carry the cost together.
+- **Streaming (`stream_options.include_usage`).** Response headers are already flushed by the time token usage is known, so a streamed response carries cost only in the body — injected into the final `usage` chunk. Without `include_usage` a streamed response emits no `usage` chunk and therefore no cost. Body injection is additive: `cost*` keys are added to the existing `usage` object, and OpenAI-compatible clients ignore unknown fields.
+
+The body cost is distinct from the server-side `llm_usage` telemetry event and the `RecordModelCost` Prometheus metric, which are emitted regardless of this client-facing surface.
+
 ## Decision Headers
 
 The final routing facts ride on the default surface; the intermediate details (including the Router Learning observability headers) are demoted to `x-vsr-debug` (#2205).
