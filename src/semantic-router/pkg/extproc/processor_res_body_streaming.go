@@ -20,8 +20,18 @@ func (r *OpenAIRouter) handleStreamingResponseBody(
 	recordStreamingTTFT(ctx)
 	ensureStreamingState(ctx)
 
-	chunk := string(responseBody)
-	ctx.HasStreamingChunks = true
+	responseAPIStream := isResponseAPIRequest(ctx)
+	parseBody := responseBody
+	if responseAPIStream {
+		frames, remainder := reassembleSSEFrames(ctx.PendingSSEBytes, responseBody)
+		ctx.PendingSSEBytes = remainder
+		parseBody = frames
+	}
+
+	chunk := string(parseBody)
+	if len(parseBody) > 0 {
+		ctx.HasStreamingChunks = true
+	}
 	r.parseStreamingChunk(chunk, ctx)
 
 	// Cost can only reach a streaming client through the include_usage chunk;
@@ -32,11 +42,17 @@ func (r *OpenAIRouter) handleStreamingResponseBody(
 		r.finalizeStreamingResponse(ctx)
 	}
 
+	if responseAPIStream {
+		bodyMutation := r.buildResponseAPIStreamingBodyMutation(parseBody, ctx)
+		return buildResponseBodyContinueResponse(bodyMutation, responseAPIStreamingHeaderMutation())
+	}
+
 	if costInjected {
 		return buildResponseBodyContinueResponse(&ext_proc.BodyMutation{
 			Mutation: &ext_proc.BodyMutation_Body{Body: []byte(mutatedChunk)},
 		}, nil)
 	}
+
 	return buildResponseBodyContinueResponse(nil, nil)
 }
 
@@ -52,7 +68,7 @@ func (r *OpenAIRouter) injectStreamingCost(chunk string, ctx *RequestContext) (s
 	if usage.PromptTokens == 0 && usage.CompletionTokens == 0 {
 		return chunk, false
 	}
-	cached, _ := streamingCachedPromptTokens(ctx, int(usage.PromptTokens))
+	cached, _, _, _ := streamingPromptTokenDetails(ctx, int(usage.PromptTokens))
 	cost := r.buildResponseCost([]costModelLeg{{
 		model: ctx.RequestModel,
 		usage: responseUsageMetrics{
