@@ -10,6 +10,7 @@ import (
 	dashboard "github.com/vllm-project/semantic-router/e2e/profiles/dashboard"
 	dynamicconfig "github.com/vllm-project/semantic-router/e2e/profiles/dynamic-config"
 	dynamo "github.com/vllm-project/semantic-router/e2e/profiles/dynamo"
+	forwardauth "github.com/vllm-project/semantic-router/e2e/profiles/forward-auth"
 	istio "github.com/vllm-project/semantic-router/e2e/profiles/istio"
 	llmd "github.com/vllm-project/semantic-router/e2e/profiles/llm-d"
 	mlmodelselection "github.com/vllm-project/semantic-router/e2e/profiles/ml-model-selection"
@@ -17,6 +18,7 @@ import (
 	multimodalrouting "github.com/vllm-project/semantic-router/e2e/profiles/multimodal-routing"
 	productionstack "github.com/vllm-project/semantic-router/e2e/profiles/production-stack"
 	raghybridsearch "github.com/vllm-project/semantic-router/e2e/profiles/rag-hybrid-search"
+	remoteembedding "github.com/vllm-project/semantic-router/e2e/profiles/remote-embedding"
 	responseapi "github.com/vllm-project/semantic-router/e2e/profiles/response-api"
 	responseapiredis "github.com/vllm-project/semantic-router/e2e/profiles/response-api-redis"
 	responseapirediscluster "github.com/vllm-project/semantic-router/e2e/profiles/response-api-redis-cluster"
@@ -43,6 +45,7 @@ func init() {
 	register("dashboard", func() framework.Profile { return dashboard.NewProfile() }, framework.ProfileCapabilities{})
 	register("dynamic-config", func() framework.Profile { return dynamicconfig.NewProfile() }, framework.ProfileCapabilities{})
 	register("dynamo", func() framework.Profile { return dynamo.NewProfile() }, framework.ProfileCapabilities{RequiresGPU: true})
+	register("forward-auth", func() framework.Profile { return forwardauth.NewProfile() }, framework.ProfileCapabilities{})
 	register("istio", func() framework.Profile { return istio.NewProfile() }, framework.ProfileCapabilities{})
 	register("llm-d", func() framework.Profile { return llmd.NewProfile() }, framework.ProfileCapabilities{})
 	register(
@@ -69,6 +72,7 @@ func init() {
 		func() framework.Profile { return responseapirediscluster.NewProfile() },
 		framework.ProfileCapabilities{LocalImages: mockVLLMLocalImages},
 	)
+	register("remote-embedding", func() framework.Profile { return remoteembedding.NewProfile() }, framework.ProfileCapabilities{})
 	register(
 		"router-replay",
 		func() framework.Profile { return routerreplay.NewProfile() },

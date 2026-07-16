@@ -39,6 +39,8 @@ on:
         value: ${{ jobs.filter.outputs.e2e_dynamic_config }}
       e2e_multimodal_routing:
         value: ${{ jobs.filter.outputs.e2e_multimodal_routing }}
+      e2e_remote_embedding:
+        value: ${{ jobs.filter.outputs.e2e_remote_embedding }}
       e2e_llm_d:
         value: ${{ jobs.filter.outputs.e2e_llm_d }}
       e2e_routing_strategies:
@@ -57,6 +59,8 @@ on:
         value: ${{ jobs.filter.outputs.e2e_multi_endpoint }}
       e2e_authz_rbac:
         value: ${{ jobs.filter.outputs.e2e_authz_rbac }}
+      e2e_forward_auth:
+        value: ${{ jobs.filter.outputs.e2e_forward_auth }}
       e2e_streaming:
         value: ${{ jobs.filter.outputs.e2e_streaming }}
       e2e_anthropic_shim:
@@ -89,6 +93,7 @@ jobs:
       e2e_dashboard: ${{ steps.changes.outputs.e2e_dashboard }}
       e2e_dynamic_config: ${{ steps.changes.outputs.e2e_dynamic_config }}
       e2e_multimodal_routing: ${{ steps.changes.outputs.e2e_multimodal_routing }}
+      e2e_remote_embedding: ${{ steps.changes.outputs.e2e_remote_embedding }}
       e2e_llm_d: ${{ steps.changes.outputs.e2e_llm_d }}
       e2e_routing_strategies: ${{ steps.changes.outputs.e2e_routing_strategies }}
       e2e_production_stack: ${{ steps.changes.outputs.e2e_production_stack }}
@@ -98,6 +103,7 @@ jobs:
       e2e_ml_model_selection: ${{ steps.changes.outputs.e2e_ml_model_selection }}
       e2e_multi_endpoint: ${{ steps.changes.outputs.e2e_multi_endpoint }}
       e2e_authz_rbac: ${{ steps.changes.outputs.e2e_authz_rbac }}
+      e2e_forward_auth: ${{ steps.changes.outputs.e2e_forward_auth }}
       e2e_streaming: ${{ steps.changes.outputs.e2e_streaming }}
       e2e_anthropic_shim: ${{ steps.changes.outputs.e2e_anthropic_shim }}
       e2e_common: ${{ steps.changes.outputs.e2e_common }}
@@ -216,6 +222,9 @@ jobs:
               - 'e2e/profiles/dynamic-config/**'
             e2e_multimodal_routing:
               - 'e2e/profiles/multimodal-routing/**'
+            e2e_remote_embedding:
+              - 'e2e/profiles/remote-embedding/**'
+              - 'e2e/testcases/remote_embedding_routing.go'
             e2e_llm_d:
               - 'e2e/profiles/llm-d/**'
               - 'deploy/kubernetes/llmd-base/**'
@@ -253,6 +262,13 @@ jobs:
               - 'src/semantic-router/pkg/classification/authz*.go'
               - 'src/semantic-router/pkg/authz/**'
               - 'dashboard/backend/handlers/security_policy*.go'
+            e2e_forward_auth:
+              - 'e2e/profiles/forward-auth/**'
+              - 'e2e/testcases/forward_authorization.go'
+              - 'src/semantic-router/pkg/extproc/req_filter_internal_trust*.go'
+              - 'src/semantic-router/pkg/extproc/processor_req_body_routing.go'
+              - 'src/semantic-router/pkg/extproc/req_filter_looper*.go'
+              - 'src/semantic-router/pkg/looper/internal_auth.go'
             e2e_streaming:
               - 'e2e/profiles/streaming/**'
               - 'deploy/kubernetes/streaming/**'
